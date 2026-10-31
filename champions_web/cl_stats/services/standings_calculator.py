@@ -1,7 +1,9 @@
 from cl_stats.models.match import Match
 from cl_stats.models.standing import TeamStanding
+from data_pipeline.supabase_client import supabase
 
-def _get_or_create( standings: dict[int, TeamStanding], team_id:int, team_name: str, team_crest: str | None) -> TeamStanding:
+
+def _get_or_create(standings: dict[int, TeamStanding], team_id: int, team_name: str, team_crest: str | None) -> TeamStanding:
     """
     Devuelve la posicion existente de un equipo o crea una nueva
     """
@@ -20,13 +22,14 @@ def _get_or_create( standings: dict[int, TeamStanding], team_id:int, team_name: 
         )
     return standings[team_id]
 
+
 def calculate_standings(matches: list[Match]) -> list[TeamStanding]:
     """
     Recibe la lista de partidos y devuelve la tabla de posiciones
     """
-    
+
     standings: dict[int, TeamStanding] = {}
-    
+
     finished_matches = [
         match
         for match in matches
@@ -34,7 +37,7 @@ def calculate_standings(matches: list[Match]) -> list[TeamStanding]:
             match.status == "FINISHED"
         )
     ]
-    
+
     for match in finished_matches:
         # Informacion de los Equipos
         home_standing = _get_or_create(
@@ -49,46 +52,72 @@ def calculate_standings(matches: list[Match]) -> list[TeamStanding]:
             team_name=match.away_team_name,
             team_crest=match.away_team_crest
         )
-        
+
         # Partido Jugado
         home_standing.played += 1
         away_standing.played += 1
-        
+
         # Goles del partido
         home_standing.goals_for += match.home_score
         home_standing.goals_against += match.away_score
-        
+
         away_standing.goals_for += match.away_score
         away_standing.goals_against += match.home_score
-        
+
         # Resultado y Puntos
         if match.home_score > match.away_score:
             home_standing.won += 1
             home_standing.points += 3
             away_standing.lost += 1
-        
+
         elif match.away_score > match.home_score:
             away_standing.won += 1
             away_standing.points += 3
             home_standing.lost += 1
-        
+
         else:
             home_standing.drawn += 1
             home_standing.points += 1
-            
+
             away_standing.drawn += 1
             away_standing.points += 1
 
     result = list(standings.values())
-    
+
     result = sorted(
         result,
-        key= lambda s: (
+        key=lambda s: (
             s.points,
             s.goal_difference,
-            s.goals_for,            
+            s.goals_for,
+            s.won,
         ),
-        reverse= True,
+        reverse=True,
     )
 
     return result
+
+
+def get_current_standings() -> list[dict]:
+    # * Traer todos los partidos de Supabase
+    response = supabase.table("matches").select("*").execute()
+
+    # * Convertir cada fila de la base de datos en un objeto Match
+    matches = [
+        Match.model_validate(row)
+        for row in (response.data or [])
+    ]
+
+    # * Cacula las posiciones
+    standings_list = calculate_standings(matches)
+
+    # * Convertir el modelo a dict
+    standings = [
+        {
+            **standing.model_dump(),
+            "goal_difference": standing.goal_difference,
+        }
+        for standing in standings_list
+    ]
+    
+    return standings
