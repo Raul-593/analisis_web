@@ -1,6 +1,5 @@
 from cl_stats.models.match import Match
 from cl_stats.models.standing import TeamStanding
-from data_pipeline.supabase_client import supabase
 
 def _get_or_create( standings: dict[int, TeamStanding], team_id:int, team_name: str, team_crest: str | None) -> TeamStanding:
     """
@@ -93,10 +92,3 @@ def calculate_standings(matches: list[Match]) -> list[TeamStanding]:
     )
 
     return result
-
-response = supabase.table("matches").select("*").execute()
-matches = [Match.model_validate(row) for row in response.data]
-
-standings = calculate_standings(matches)
-for i, s in enumerate(standings, start=1):
-    print(i, s.team_name, s.played, s.won, s.drawn, s.lost, s.goal_difference, s.points)
